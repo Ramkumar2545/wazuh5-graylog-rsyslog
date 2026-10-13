@@ -38,13 +38,6 @@ So this repo covers **events and manager logs from the manager node**. Alerts ne
 
 Not tested: multi-node clusters, other distributions, other Graylog versions. Items marked **Verify** below are not confirmed.
 
-## How it works
-
-```
-Agents -> Wazuh manager (decodes) -> events file -> rsyslog imfile -> Syslog TCP -> Graylog
-                                  -> indexer (matches rules, creates findings)  [not forwarded]
-```
-
 ## Requirements
 
 - Wazuh 5 manager node with root access
