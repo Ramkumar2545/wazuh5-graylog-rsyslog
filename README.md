@@ -181,7 +181,7 @@ sudo journalctl -u rsyslog -n 15 --no-pager
 sudo ss -tnp | grep 5069
 ```
 
-Expected: the validation ends with End of config validation run, there is no Permission denied line in the journal, and ss shows an ESTABLISHED connection from rsyslogd to 192.168.31.24:5069.
+Expected: the validation ends with End of config validation run, there is no Permission denied line in the journal, and ss shows an ESTABLISHED connection from rsyslogd to 192.168.31.24:5000.
 
 ## 11. Step 9 - Verify in Graylog
 
