@@ -37,13 +37,6 @@ What this means:
 
 Not tested: multi-node clusters, other distributions, other Graylog versions. Items marked **Verify** below are not confirmed.
 
-## Requirements
-
-- Wazuh 5 manager node with root access
-- Graylog with a **Syslog TCP** input (note its port, for example 5069) reachable from the manager
-- `rsyslog` and `acl` packages
-
-
 ## 1. How it works
 
 ```mermaid
