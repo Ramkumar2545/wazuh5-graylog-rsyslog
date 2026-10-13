@@ -23,12 +23,6 @@ What this means:
 | Findings available at | Manager | Indexer only (`wazuh-findings-v5-*`) |
 
 
-## What you get
-
-- Full decoded Wazuh events in Graylog, with the original Windows or Sysmon event inside.
-- Wazuh manager service logs (`wazuh-manager.log`, `api.log`, `cluster.log`) in Graylog.
-- Disk-backed rsyslog queue, so events are kept if Graylog is briefly down.
-
 ## Tested on
 
 - Wazuh 5.0.0-rc1, single node, Ubuntu with rsyslog 8.2312 and AppArmor
