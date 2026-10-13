@@ -57,133 +57,147 @@ Test the connection first:
 nc -vz GRAYLOG_IP GRAYLOG_PORT
 ```
 
-## Step 1: Create the Graylog input
+## 1. How it works
 
-In Graylog: System, Inputs, choose **Syslog TCP**, Launch new input. Bind address `0.0.0.0`, set a port, save, and start it. Use that port in the rsyslog config.
+```mermaid
+flowchart LR
+	A["Windows agent"] --> B["Wazuh 5 manager"]
+	B --> C["Events file output<br>standard-wazuh-events-v5.json"]
+	C --> D["rsyslog imfile<br>(on the manager)"]
+	D -->|"syslog TCP 5069"| E["Graylog Syslog TCP input"]
+	B --> F["Wazuh indexer and dashboard"]
+```
 
-## Step 2: Enable the Wazuh events file
+Wazuh 5 has no alerts.json and no syslog_output. The manager can write its events to a JSON file once the optional file output is enabled. rsyslog tails that file and forwards each line to Graylog. Wazuh itself keeps working as before.
 
-Edit `/var/wazuh-manager/etc/outputs/default/file-output-integrations.yml`, set `enabled: true`, then restart the manager:
+## 2. Values used in this guide
+
+| Item | Value |
+| --- | --- |
+| Graylog server | 192.168.31.24 (Graylog 7.1.10) |
+| Graylog input | Syslog TCP, title wazuh5-manager-syslog, bind 0.0.0.0, port 5069 |
+| Source file on the manager | /var/wazuh-manager/logs/standard-wazuh-events-v5/standard-wazuh-events-v5.json |
+| Output switch file | /var/wazuh-manager/etc/outputs/default/file-output-integrations.yml |
+| rsyslog config | /etc/rsyslog.d/60-wazuh5-graylog.conf |
+
+## 3. Step 1 - Create the Graylog input
+
+1. Log in to Graylog and go to System, then Inputs.
+2. In the Select input dropdown choose **Syslog TCP**, then click **Launch new input**.
+3. Fill in: Title `wazuh5-manager-syslog`, Bind address `0.0.0.0`, Port `5000`. Use a port above 1024, because 514 needs root.
+4. Save and wait until the state shows **RUNNING**. The port shown in the Inputs list is the real one, so check it.
+
+## 4. Step 2 - Open the port and test from the manager
+
+On the Graylog machine, only if ufw is active:
+
+```bash
+sudo ufw allow 5000/tcp
+```
+
+On the Wazuh manager:
+
+```bash
+nc -vz 192.168.31.24 5000
+```
+
+You should see a success or open message. If it times out, fix the firewall or the Graylog bind address before continuing.
+
+## 5. Step 3 - Install rsyslog and acl on the manager
+
+```bash
+sudo apt update
+sudo apt install -y rsyslog acl
+systemctl is-active rsyslog
+```
+
+## 6. Step 4 - Turn on the Wazuh events file output
+
+The file output is disabled by default. Source: a Wazuh engineer's answer in the Wazuh community Slack for 5.0 RC.
+
+```bash
+sudo nano /var/wazuh-manager/etc/outputs/default/file-output-integrations.yml
+```
+
+Set `enabled: true`, save, then restart the manager and confirm the file appears and grows:
 
 ```bash
 sudo systemctl restart wazuh-manager
 sleep 20
 sudo ls -la /var/wazuh-manager/logs/standard-wazuh-events-v5/
+sudo tail -n 1 /var/wazuh-manager/logs/standard-wazuh-events-v5/standard-wazuh-events-v5.json
 ```
 
-You should see `standard-wazuh-events-v5.json`.
+The events use the new wazuh-events-v5 format (ECS-style JSON), not the old 4.x alerts.json format.
 
-This file output comes from a Wazuh engineer's answer in Slack and is not confirmed in the official documentation. **Verify** it on your version.
+## 7. Step 5 - Let rsyslog read the file (permissions)
 
-## Step 3: Let rsyslog read the files
-
-rsyslog runs as user `syslog`, but the Wazuh folders belong to `wazuh-manager`. Do **not** run rsyslog as root. Give it read access with ACLs:
+rsyslog runs as user syslog, and the Wazuh folders are owned by wazuh-manager with no access for others. Grant read access with ACLs:
 
 ```bash
-sudo apt install -y rsyslog acl
 sudo setfacl -m u:syslog:x /var/wazuh-manager /var/wazuh-manager/logs
 sudo setfacl -R -m u:syslog:rX /var/wazuh-manager/logs/standard-wazuh-events-v5
 sudo setfacl -d -m u:syslog:rX /var/wazuh-manager/logs/standard-wazuh-events-v5
-```
-
-Check it:
-
-```bash
 sudo -u syslog head -c 200 /var/wazuh-manager/logs/standard-wazuh-events-v5/standard-wazuh-events-v5.json
 ```
 
-## Step 4: Allow it in AppArmor (Ubuntu)
+The last command must print the start of a JSON line. The default ACL (the -d line) makes new files created by log rotation readable too.
 
-If rsyslog still reports "Permission denied" after the ACLs, AppArmor is blocking it:
+## 8. Step 6 - Allow rsyslog through AppArmor
+
+On Ubuntu, rsyslog has an AppArmor profile that only allows reading under /var/log. Even with correct file permissions, rsyslog logged Permission denied for the Wazuh file until this was added:
 
 ```bash
-sudo tee -a /etc/apparmor.d/local/usr.sbin.rsyslogd <<'EOT'
-/var/wazuh-manager/logs/standard-wazuh-events-v5/ r,
+echo '/var/wazuh-manager/logs/standard-wazuh-events-v5/ r,
 /var/wazuh-manager/logs/standard-wazuh-events-v5/** rk,
 /var/wazuh-manager/logs/ r,
-/var/wazuh-manager/ r,
-EOT
+/var/wazuh-manager/ r,' | sudo tee -a /etc/apparmor.d/local/usr.sbin.rsyslogd
 sudo apparmor_parser -r /etc/apparmor.d/usr.sbin.rsyslogd
 ```
 
-## Step 5: Configure rsyslog
+To confirm AppArmor is the blocker on another machine, run `sudo journalctl -k | grep -i apparmor | tail`. DENIED lines for /var/wazuh-manager mean this step is needed.
 
-Copy `configs/60-wazuh5-graylog.conf` to `/etc/rsyslog.d/`, then replace `GRAYLOG_IP` and `GRAYLOG_PORT`:
+## 9. Step 7 - Write the rsyslog forwarding config
 
 ```bash
-sudo cp configs/60-wazuh5-graylog.conf /etc/rsyslog.d/
-sudo nano /etc/rsyslog.d/60-wazuh5-graylog.conf
+sudo tee /etc/rsyslog.d/60-wazuh5-graylog.conf > /dev/null <<'EOF'
+module(load="imfile")
+
+input(type="imfile"
+      File="/var/wazuh-manager/logs/standard-wazuh-events-v5/standard-wazuh-events-v5.json"
+      Tag="wazuh-events:"
+      Severity="info"
+      Facility="local6"
+      addMetadata="off")
+
+local6.* action(type="omfwd"
+      target="192.168.31.24"
+      port="5000"
+      protocol="tcp"
+      template="RSYSLOG_SyslogProtocol23Format"
+      action.resumeRetryCount="-1"
+      queue.type="LinkedList"
+      queue.size="10000"
+      queue.filename="wazuh5_fwd"
+      queue.saveOnShutdown="on")
+EOF
+```
+
+The queue settings keep messages on disk and retry if Graylog is down.
+
+## 10. Step 8 - Validate and restart
+
+```bash
 sudo rsyslogd -N1
 sudo systemctl restart rsyslog
+sudo journalctl -u rsyslog -n 15 --no-pager
+sudo ss -tnp | grep 5069
 ```
 
-## Step 6: Check
+Expected: the validation ends with End of config validation run, there is no Permission denied line in the journal, and ss shows an ESTABLISHED connection from rsyslogd to 192.168.31.24:5069.
 
-```bash
-sudo ss -tnp | grep GRAYLOG_PORT           # expect ESTAB
-sudo journalctl -u rsyslog -n 20 --no-pager # expect no "Permission denied"
-```
+## 11. Step 9 - Verify in Graylog
 
-In Graylog, search the last 5 minutes. Every message holds the whole event as JSON in the `message` field. The timestamp shown is when Graylog received it, not when the event happened. The real event time is inside `event.original` (`SystemTime`).
-
-## Step 7 (optional): Manager service logs
-
-```bash
-sudo setfacl -m u:syslog:r /var/wazuh-manager/logs/wazuh-manager.log /var/wazuh-manager/logs/api.log /var/wazuh-manager/logs/cluster.log
-sudo setfacl -d -m u:syslog:rX /var/wazuh-manager/logs
-sudo setfacl -R -m u:syslog:rX /var/wazuh-manager/logs/cluster
-
-sudo tee -a /etc/apparmor.d/local/usr.sbin.rsyslogd <<'EOT'
-/var/wazuh-manager/logs/*.log rk,
-/var/wazuh-manager/logs/cluster/ r,
-/var/wazuh-manager/logs/cluster/** rk,
-EOT
-sudo apparmor_parser -r /etc/apparmor.d/usr.sbin.rsyslogd
-
-sudo cp configs/61-wazuh5-manager-logs.conf /etc/rsyslog.d/
-sudo rsyslogd -N1 && sudo systemctl restart rsyslog
-```
-
-rsyslog sends only lines written after it starts. In Graylog, search for text from the logs, for example `[Master]` for the cluster log or `wazuh-manager-analysisd` for the manager log.
-
-## Getting alerts into Graylog
-
-The manager never holds findings, so there is no manager-side way. The options, best first:
-
-1. **Poll the indexer** with the script in [`optional-findings-forwarder/`](optional-findings-forwarder). It reads `wazuh-findings-v5-*` and sends each finding to Graylog. It reads the indexer, so use it only if that is acceptable. Experimental: the query was verified with curl, the script itself has not been run against a live indexer.
-2. **Alerting webhook** from the Wazuh dashboard to a Graylog HTTP input. Not verified in 5.0 RC.
-3. **Build detections in Graylog** from the decoded fields (`event.code`, `process.name`, `registry.path`, `dns.question.name`). The alerts then live in Graylog, not in the Wazuh dashboard. You must parse the JSON in the `message` field first.
-4. **Use Wazuh 4** if you need alerts straight from the manager.
-
-Check findings from the command line without putting the password in your shell history:
-
-```bash
-read -s -p "Indexer admin password: " PW; echo
-curl -sk -u "admin:$PW" 'https://127.0.0.1:9200/wazuh-findings-v5-*/_count?pretty'
-unset PW
-```
-
-## Multi-node clusters
-
-Not tested. The idea: repeat Steps 2 to 6 on every manager node, and run the findings forwarder on **one** host only, so findings are not duplicated. **Verify** whether the events file setting syncs from the master to the workers, and whether each worker writes its own events file.
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---|---|
-| Nothing arrives in Graylog | Use the port shown on the Graylog Inputs page, not 514 or 1514. Test with `nc -vz` |
-| `Permission denied` on the file | Add the ACLs (Step 3) |
-| Still denied after ACLs | Add the AppArmor rules (Step 4) |
-| File not found | Enable the file output and restart the manager (Step 2) |
-| Rows look identical in Graylog | They share the same agent and host prefix. Compare `wazuh.id` and `SystemTime` |
-| Manager log shows `Missing root decoder` for space `custom` | A custom policy has no root decoder. Check your custom space. Not caused by this setup |
-
-## Security notes
-
-- Do not paste the indexer `admin` password in chat, tickets or commits. If it leaks, change it.
-- Keep the findings forwarder env file at `chmod 600`.
-- Keep port 9200 closed to the network unless you need it.
-
-## License
-
-Add the license of your choice.
+1. Generate an event, for example run `hostname` in PowerShell on the Windows agent.
+2. In Graylog go to System, Inputs, and click **Received messages** on wazuh5-manager-syslog. You can also open Search with a query on the input id and a time range of the last 5 minutes.
+3. You should see messages whose message field contains the whole event JSON (wazuh, agent, event.original and so on).
