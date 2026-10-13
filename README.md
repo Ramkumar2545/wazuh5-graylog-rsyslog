@@ -22,7 +22,6 @@ What this means:
 | Forward alerts (findings) from the manager | Yes (`syslog_output`) | **Not possible** |
 | Findings available at | Manager | Indexer only (`wazuh-findings-v5-*`) |
 
-So this repo covers **events and manager logs from the manager node**. Alerts need a different route: see [Getting alerts into Graylog](#getting-alerts-into-graylog).
 
 ## What you get
 
