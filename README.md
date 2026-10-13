@@ -51,7 +51,7 @@ flowchart LR
 	A["Windows agent"] --> B["Wazuh 5 manager"]
 	B --> C["Events file output<br>standard-wazuh-events-v5.json"]
 	C --> D["rsyslog imfile<br>(on the manager)"]
-	D -->|"syslog TCP 5069"| E["Graylog Syslog TCP input"]
+	D -->|"syslog TCP 5000"| E["Graylog Syslog TCP input"]
 	B --> F["Wazuh indexer and dashboard"]
 ```
 
