@@ -34,7 +34,7 @@ So this repo covers **events and manager logs from the manager node**. Alerts ne
 
 - Wazuh 5.0.0-rc1, single node, Ubuntu with rsyslog 8.2312 and AppArmor
 - Graylog 7.1 with a Syslog TCP input
-- Windows agent with Sysmon
+
 
 Not tested: multi-node clusters, other distributions, other Graylog versions. Items marked **Verify** below are not confirmed.
 
@@ -44,11 +44,6 @@ Not tested: multi-node clusters, other distributions, other Graylog versions. It
 - Graylog with a **Syslog TCP** input (note its port, for example 5069) reachable from the manager
 - `rsyslog` and `acl` packages
 
-Test the connection first:
-
-```bash
-nc -vz GRAYLOG_IP GRAYLOG_PORT
-```
 
 ## 1. How it works
 
