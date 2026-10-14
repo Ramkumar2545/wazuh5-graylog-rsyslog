@@ -49,7 +49,7 @@ Wazuh 5 has no alerts.json and no syslog_output. The manager can write its event
 | Item | Value |
 | --- | --- |
 | Graylog server | 192.168.31.24 (Graylog 7.1.10) |
-| Graylog input | Syslog TCP, title wazuh5-manager-syslog, bind 0.0.0.0, port 5069 |
+| Graylog input | Syslog TCP, title wazuh5-manager-syslog, bind 0.0.0.0, port 5000 |
 | Source file on the manager | /var/wazuh-manager/logs/standard-wazuh-events-v5/standard-wazuh-events-v5.json |
 | Output switch file | /var/wazuh-manager/etc/outputs/default/file-output-integrations.yml |
 | rsyslog config | /etc/rsyslog.d/60-wazuh5-graylog.conf |
@@ -165,7 +165,7 @@ The queue settings keep messages on disk and retry if Graylog is down.
 sudo rsyslogd -N1
 sudo systemctl restart rsyslog
 sudo journalctl -u rsyslog -n 15 --no-pager
-sudo ss -tnp | grep 5069
+sudo ss -tnp | grep 5000
 ```
 
 Expected: the validation ends with End of config validation run, there is no Permission denied line in the journal, and ss shows an ESTABLISHED connection from rsyslogd to 192.168.31.24:5000.
